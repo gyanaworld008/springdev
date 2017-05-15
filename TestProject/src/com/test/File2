@@ -1,0 +1,184 @@
+public boolean dutchRestartLot(Lot lot,HttpServletRequest request) {
+		log.info("Inside dutchRestartLot method");
+	//	LotScheduleInfo lotScheduleInfo=englishLotPersistenceConnector.getLotScheduleBehaviour(lot.getId());
+		LotScheduleInfo lotScheduleInfo = englishLotPersistenceConnector.getScheduleEventInfo(lot.getId());
+		
+		List<LineItem> lineItems=englishLotPersistenceConnector.getPausedLotItemsByLotId(lot.getId());
+		Map<String,LineItem> lineItemMap= new HashMap<String,LineItem>();
+		
+		lotScheduleInfo.setLotDurationDays(0);
+		lotScheduleInfo.setLotDurationHours(0);
+		lotScheduleInfo.setLotDurationMinutes(0);
+		
+		Date endTime = null;
+		Calendar cal = Calendar.getInstance();
+		cal.setTime(lot.getStartDateTime());
+		if (lot.getDurationType() == 2) {
+			cal.add(Calendar.DATE, lot.getDuration());
+			lotScheduleInfo.setLotDurationDays(lot.getDuration());
+		}
+		if (lot.getDurationType() == 1) {
+			cal.add(Calendar.HOUR, lot.getDuration());
+			lotScheduleInfo.setLotDurationHours(lot.getDuration());
+		}
+		if (lot.getDurationType() == 0) {
+			cal.add(Calendar.MINUTE, lot.getDuration());
+			lotScheduleInfo.setLotDurationMinutes(lot.getDuration());
+		}
+		endTime = cal.getTime();
+		log.info("endTime----" + endTime);
+		lot.setCloseDateTime(endTime);
+		boolean status = false;
+		int i=1;
+		Date startTime=null;
+		
+		for(LineItem lineItem:lineItems){
+			//LineItem lineItem=new LineItem();
+			//For Parallel Lot lineitem start time and end time calculation
+			if(lotScheduleInfo.getLotScheduleBehaviour()==1){
+				lineItem.setInitialItemStartTime(lot.getStartDateTime());
+				lineItem.setInitialItemEndTime(lot.getCloseDateTime());
+				lineItem.setActualItemStartTime(lot.getStartDateTime());
+				lineItem.setActualItemEndTime(lot.getCloseDateTime());
+				lineItem.setCreatedBy(lot.getRestartedBy());
+				lotScheduleInfo.setLotEndTime(lot.getCloseDateTime());
+				if(lot.getStartDateTime().compareTo(new Date())<=0){
+					lineItem.setStatus(VendorItem.Status.LIVE.getStatus());
+				}
+				else{
+					lineItem.setStatus(VendorItem.Status.SCHEDULED.getStatus());
+				}
+				lineItemMap.put(lineItem.getLotItemId(), lineItem);
+			}
+			//For Serial Lot lineitem start time and end time calculation
+			if(lotScheduleInfo.getLotScheduleBehaviour()==2){
+				if(i==1){
+					startTime=lot.getStartDateTime();
+					endTime=lot.getCloseDateTime();
+					lotScheduleInfo.setLotEndTime(lot.getCloseDateTime());
+					i++;
+				}else{
+					if(lineItem.getDisplayOrder()==lineItems.get(lineItems.indexOf(lineItem)-1).getDisplayOrder()){
+						startTime=lineItems.get(lineItems.indexOf(lineItem)-1).getActualItemStartTime();
+						endTime=lineItems.get(lineItems.indexOf(lineItem)-1).getActualItemEndTime();
+						lotScheduleInfo.setLotEndTime(endTime);						
+					}
+					else{
+						startTime=endTime;
+						Calendar cal1 = Calendar.getInstance();
+						cal1.setTime(startTime);
+						if (lot.getDurationType() == 2) {
+							cal1.add(Calendar.DATE, lot.getDuration());
+						}
+						if (lot.getDurationType() == 1) {
+							cal1.add(Calendar.HOUR, lot.getDuration());
+						}
+						if (lot.getDurationType() == 0) {
+							cal1.add(Calendar.MINUTE, lot.getDuration());
+						}
+						endTime = cal1.getTime();
+						endTime=cal1.getTime();
+						lotScheduleInfo.setLotEndTime(endTime);
+						i++;
+					}
+					
+				}
+				if(startTime.compareTo(new Date())<=0){
+					lineItem.setStatus(VendorItem.Status.LIVE.getStatus());
+				}
+				else{
+					lineItem.setStatus(VendorItem.Status.SCHEDULED.getStatus());
+				}
+				lineItem.setInitialItemStartTime(startTime);
+				lineItem.setInitialItemEndTime(endTime);
+				lineItem.setActualItemStartTime(startTime);
+				lineItem.setActualItemEndTime(endTime);
+				//for dutch schduler
+				lineItem.setTriggerInterval(lotScheduleInfo.getPriceIntervalTime());
+				lineItem.setTriggerStartTime(startTime);
+				lineItem.setTriggerEndTime(endTime);
+				lineItem.setCreatedBy(lot.getRestartedBy());
+
+				lineItem.setLotId(lot.getId());
+				lineItemMap.put(lineItem.getLotItemId(), lineItem);
+			}
+			//For Staggered Lot lineitem start time and end time calculation			
+			if(lotScheduleInfo.getLotScheduleBehaviour()==3){
+				if(i==1){					
+					endTime=lot.getCloseDateTime();					
+					i++;
+				}else{
+					if(lineItem.getDisplayOrder()==lineItems.get(lineItems.indexOf(lineItem)-1).getDisplayOrder()){						
+						endTime=lineItems.get(lineItems.indexOf(lineItem)-1).getActualItemEndTime();											
+					}
+					else{
+						Calendar cal2 = Calendar.getInstance();
+						cal2.setTime(endTime);
+						cal2.add(Calendar.MINUTE, lotScheduleInfo.getIntervalTime());
+						endTime=cal2.getTime();						
+						i++;
+					}
+					
+				}
+				lineItem.setInitialItemStartTime(lot.getStartDateTime());
+				lineItem.setInitialItemEndTime(endTime);
+				lineItem.setActualItemStartTime(lot.getStartDateTime());
+				lineItem.setActualItemEndTime(endTime);
+				lotScheduleInfo.setLotEndTime(endTime);
+				//for dutch schduler
+				lineItem.setTriggerInterval(lotScheduleInfo.getPriceIntervalTime());
+				lineItem.setTriggerStartTime(startTime);
+				lineItem.setTriggerEndTime(endTime);
+				lineItem.setCreatedBy(lot.getRestartedBy());
+
+				lineItem.setLotId(lot.getId());
+				if(lot.getStartDateTime().compareTo(new Date())<=0){
+					lineItem.setStatus(VendorItem.Status.LIVE.getStatus());
+				}
+				else{
+					lineItem.setStatus(VendorItem.Status.SCHEDULED.getStatus());
+				}
+				lineItemMap.put(lineItem.getLotItemId(), lineItem);
+			}
+			
+		}
+		
+		lotScheduleInfo.setLotStartTime(lot.getStartDateTime());
+		lotScheduleInfo.setLotId(lot.getId());
+		/*DUTCH CODE FOR RESTART ITEM START*/
+		quartzPersistenceSchedulerUtil.reStartJob(lineItems);
+		/*DUTCH CODE FOR RESTART ITEM END*/
+		//status = englishLotPersistenceConnector.updateLotItemTime(lot);
+		englishLotPersistenceConnector.saveLotItemTimeLinesHistory(lineItemMap);
+		status=englishLotPersistenceConnector.updateRunningLotItemTimeLines(lineItemMap);
+		
+		englishLotPersistenceConnector.updateLotItemsStatusForRestart(lot.getId(),
+				VendorItem.Status.SCHEDULED.getStatus());
+
+		String pauseId = englishLotPersistenceConnector.getPauseId(lot.getId());
+		log.info("pauseId----" + pauseId);
+		lot.setPauseId(pauseId);
+
+		englishLotPersistenceConnector.saveRestartDetails(lot);
+		englishLotPersistenceConnector.updateLotCurrentStage(lot.getId(),
+				LotCurrentStage.LAUNCHED.getStatus());
+		englishLotPersistenceConnector.updateLotLiveAndScheduleStatus(
+				lot.getId(),
+				Lot.PresentItemsStatus.NO_RUNNING_ITEMS_PRESENT.getStatus(),
+				Lot.PresentItemsStatus.SCHEDULE_ITEMS_PRESENT.getStatus(),
+				Lot.PresentItemsStatus.NO_CLOSED_ITEMS_PRESENT.getStatus());
+		englishLotPersistenceConnector.updateLotItemStatusToLive();
+		String smsMessage="Please Note that LOTNAME  auction will restart at STARTTIME .";
+		String textMsg="restart";
+		
+		sendAuctionReStartMail(lotScheduleInfo, request, lineItemMap,lot);
+		
+		if(status){
+//			sendSmsMessage.sendSmsToAllVendors(lot.getId(), smsMessage, true);
+			
+	//		sendSmsMessage.sendSmsToAllVendorsSec(lot.getId(),lot.getEventId(), smsMessage, textMsg,true,request);
+			
+	//		sendSmsMessage.sendSmsToAllMonitors(lot.getId(),lot.getEventId(), smsMessage, textMsg,true,request);
+		}
+		return status;
+	}
